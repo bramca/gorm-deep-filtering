@@ -4,9 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"regexp"
+	"strings"
 	"sync"
 
+	"github.com/sirupsen/logrus"
 	"github.com/survivorbat/go-tsyncmap"
+	gormqonvert "github.com/survivorbat/gorm-query-convert"
 	"gorm.io/gorm/schema"
 
 	"gorm.io/gorm"
@@ -81,6 +85,23 @@ func AddDeepFilters(db *gorm.DB, objectType any, filters ...map[string]any) (*go
 	relationalTypesInfo := getDatabaseFieldsOfType(db.NamingStrategy, schemaInfo)
 
 	simpleFilter := map[string]any{}
+	filterString := ""
+	functionRegex := regexp.MustCompile(`.*?\((.*?)\)`)
+	qonvertMap := map[string]string{}
+
+	if _, ok := db.Plugins[gormqonvert.New(gormqonvert.CharacterConfig{}).Name()]; ok {
+		qonvertPlugin := db.Plugins[gormqonvert.New(gormqonvert.CharacterConfig{}).Name()]
+		qonvertPluginConfig := reflect.ValueOf(qonvertPlugin).Elem().FieldByName("config")
+		qonvertMap[qonvertPluginConfig.FieldByName("GreaterThanPrefix").String()] = ">"
+		qonvertMap[qonvertPluginConfig.FieldByName("GreaterOrEqualToPrefix").String()] = ">="
+		qonvertMap[qonvertPluginConfig.FieldByName("LessThanPrefix").String()] = "<"
+		qonvertMap[qonvertPluginConfig.FieldByName("LessOrEqualToPrefix").String()] = "<="
+		qonvertMap[qonvertPluginConfig.FieldByName("NotEqualToPrefix").String()] = "!="
+		qonvertMap[qonvertPluginConfig.FieldByName("LikePrefix").String()] = "%s LIKE '%%%s%%'"
+		qonvertMap[qonvertPluginConfig.FieldByName("NotLikePrefix").String()] = "%s NOT LIKE '%%%s%%'"
+	}
+
+	logrus.Infof("qonvertMap: %+v\n", qonvertMap)
 
 	// Go through the filters
 	for _, filterObject := range filters {
@@ -105,15 +126,72 @@ func AddDeepFilters(db *gorm.DB, objectType any, filters ...map[string]any) (*go
 
 			// Simple filters (string, int, bool etc.)
 			default:
+				if functionRegex.MatchString(fieldName) {
+					checkFieldName := functionRegex.ReplaceAllString(fieldName, "$1")
+					if _, ok := schemaInfo.FieldsByDBName[checkFieldName]; !ok {
+						return nil, fmt.Errorf("failed to add filters for '%s.%s': %w", schemaInfo.Table, checkFieldName, ErrFieldDoesNotExist)
+					}
+
+					if _, ok := givenFilter.([]string); ok {
+						for _, filter := range givenFilter.([]string) {
+							for qonvertField, qonvertValue := range qonvertMap {
+								if !strings.Contains(filter, qonvertField) {
+									continue
+								}
+
+								if strings.Contains(qonvertValue, "%") {
+									if filterString == "" {
+										filterString = fmt.Sprintf(qonvertValue, fieldName, filter)
+									} else {
+										filterString = fmt.Sprintf("%s OR %s", filterString, fmt.Sprintf(qonvertValue, fieldName, filter))
+									}
+								} else {
+									filter = strings.Replace(filter, qonvertValue, "", 1)
+									filterString = fmt.Sprintf("%s %s %s", fieldName, qonvertValue, fmt.Sprintf("'%s'", filter))
+								}
+
+								break
+							}
+						}
+					}
+
+					for qonvertField, qonvertValue := range qonvertMap {
+						if !strings.Contains(givenFilter.(string), qonvertField) {
+							continue
+						}
+
+						if strings.Contains(qonvertField, "%") {
+							if filterString == "" {
+								filterString = fmt.Sprintf(qonvertValue, fieldName, givenFilter)
+							} else {
+								filterString = fmt.Sprintf("%s OR %s", filterString, fmt.Sprintf(qonvertValue, fieldName, givenFilter))
+							}
+						} else {
+							givenFilter = strings.Replace(givenFilter.(string), qonvertValue, "", 1)
+							filterString = fmt.Sprintf("%s %s %s", fieldName, qonvertValue, fmt.Sprintf("'%s'", givenFilter))
+						}
+					}
+
+					if filterString == "" {
+						filterString = fmt.Sprintf("%s = '%s'", fieldName, givenFilter)
+					}
+
+					break
+				}
+
 				if _, ok := schemaInfo.FieldsByDBName[fieldName]; !ok {
 					return nil, fmt.Errorf("failed to add filters for '%s.%s': %w", schemaInfo.Table, fieldName, ErrFieldDoesNotExist)
 				}
-				simpleFilter[schemaInfo.Table+"."+fieldName] = givenFilter
+				simpleFilter[fieldName] = givenFilter
+				logrus.Infof("simpleFilter: %+v", simpleFilter)
 			}
 		}
 	}
 
 	// Add simple filters
+	if filterString != "" {
+		db = db.Where(filterString)
+	}
 	db = db.Where(simpleFilter)
 
 	return db, nil

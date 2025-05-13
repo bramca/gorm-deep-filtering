@@ -7,7 +7,10 @@ import (
 	"testing"
 
 	"github.com/ing-bank/gormtestutil"
+	"gorm.io/gorm"
 	"gorm.io/gorm/schema"
+
+	gormqonvert "github.com/survivorbat/gorm-query-convert"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -688,6 +691,159 @@ func TestAddDeepFilters_ReturnsErrorOnUnknownFieldInformation(t *testing.T) {
 	}
 }
 
+func TestAddDeepFilters_AddsSimplelFiltersWithFunctions(t *testing.T) {
+	t.Parallel()
+	t.Cleanup(cleanupCache)
+	type SimpleStruct6 struct {
+		Name       string
+		Occupation string
+	}
+
+	tests := map[string]struct {
+		records   []*SimpleStruct6
+		expected  []*SimpleStruct6
+		filterMap map[string]any
+	}{
+		"first": {
+			records: []*SimpleStruct6{
+				{
+					Occupation: "Dev",
+					Name:       "John",
+				},
+				{
+					Occupation: "Ops",
+					Name:       "Jennifer",
+				},
+			},
+			expected: []*SimpleStruct6{
+				{
+					Occupation: "Ops",
+					Name:       "Jennifer",
+				},
+			},
+			filterMap: map[string]any{
+				"LOWER(occupation)": "ops",
+			},
+		},
+		"second": {
+			records: []*SimpleStruct6{
+				{
+					Occupation: "Dev",
+					Name:       "John",
+				},
+				{
+					Occupation: "Ops",
+					Name:       "Jennifer",
+				},
+				{
+					Occupation: "Ops",
+					Name:       "Roy",
+				},
+			},
+			expected: []*SimpleStruct6{
+				{
+					Occupation: "Ops",
+					Name:       "Jennifer",
+				},
+				{
+					Occupation: "Ops",
+					Name:       "Roy",
+				},
+			},
+			filterMap: map[string]any{
+				"UPPER(occupation)": "OPS",
+			},
+		},
+		"third": {
+			records: []*SimpleStruct6{
+				{
+					Occupation: "Dev",
+					Name:       "John",
+				},
+				{
+					Occupation: "Ops",
+					Name:       "Jennifer",
+				},
+			},
+			expected: []*SimpleStruct6{
+				{
+					Occupation: "Ops",
+					Name:       "Jennifer",
+				},
+			},
+			filterMap: map[string]any{
+				"occupation": "Ops",
+				"LENGTH(name)": ">4",
+			},
+		},
+		"fourth": {
+			records: []*SimpleStruct6{
+				{
+					Occupation: "Dev",
+					Name:       "John",
+				},
+				{
+					Occupation: "Ops",
+					Name:       "Jennifer",
+				},
+			},
+			expected: []*SimpleStruct6{
+				{
+					Occupation: "Dev",
+					Name:       "John",
+				},
+				{
+					Occupation: "Ops",
+					Name:       "Jennifer",
+				},
+			},
+			filterMap: map[string]any{
+				"occupation": []string{"Ops", "Dev"},
+			},
+		},
+	}
+
+	for name, testData := range tests {
+		testData := testData
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			// Arrange
+			database := gormtestutil.NewMemoryDatabase(t, gormtestutil.WithName(t.Name()))
+			database.Use(gormqonvert.New(gormqonvert.CharacterConfig{
+				GreaterThanPrefix:      ">",
+				GreaterOrEqualToPrefix: ">=",
+				LessThanPrefix:         "<",
+				LessOrEqualToPrefix:    "<=",
+				NotEqualToPrefix:       "!=",
+				LikePrefix:             "~",
+				NotLikePrefix:          "!~",
+			}))
+			_ = database.AutoMigrate(&SimpleStruct6{})
+
+			database.CreateInBatches(testData.records, len(testData.records))
+
+			// Act
+			// sqlQuery := database.ToSQL(func (tx *gorm.DB) *gorm.DB {
+			// 	deepFilterQuery, _ := AddDeepFilters(tx, SimpleStruct6{}, testData.filterMap)
+			// 	return deepFilterQuery.Find(&SimpleStruct6{})
+			// })
+			// fmt.Printf("sqlQuery: %s\n", sqlQuery)
+			query, err := AddDeepFilters(database, SimpleStruct6{}, testData.filterMap)
+
+
+			// Assert
+			assert.Nil(t, err)
+
+			if assert.NotNil(t, query) {
+				var result []*SimpleStruct6
+				query.Preload(clause.Associations).Find(&result)
+
+				assert.EqualValues(t, testData.expected, result)
+			}
+		})
+	}
+}
+
 func TestAddDeepFilters_AddsSimpleFilters(t *testing.T) {
 	t.Parallel()
 	t.Cleanup(cleanupCache)
@@ -806,12 +962,27 @@ func TestAddDeepFilters_AddsSimpleFilters(t *testing.T) {
 			t.Parallel()
 			// Arrange
 			database := gormtestutil.NewMemoryDatabase(t, gormtestutil.WithName(t.Name()))
+			database.Use(gormqonvert.New(gormqonvert.CharacterConfig{
+				GreaterThanPrefix:      ">",
+				GreaterOrEqualToPrefix: ">=",
+				LessThanPrefix:         "<",
+				LessOrEqualToPrefix:    "<=",
+				NotEqualToPrefix:       "!=",
+				LikePrefix:             "~",
+				NotLikePrefix:          "!~",
+			}))
 			_ = database.AutoMigrate(&SimpleStruct6{})
 
 			database.CreateInBatches(testData.records, len(testData.records))
 
 			// Act
+			sqlQuery := database.ToSQL(func (tx *gorm.DB) *gorm.DB {
+				deepFilterQuery, _ := AddDeepFilters(tx, SimpleStruct6{}, testData.filterMap)
+				return deepFilterQuery.Find(&SimpleStruct6{})
+			})
+			fmt.Printf("sqlQuery: %s\n", sqlQuery)
 			query, err := AddDeepFilters(database, SimpleStruct6{}, testData.filterMap)
+
 
 			// Assert
 			assert.Nil(t, err)
