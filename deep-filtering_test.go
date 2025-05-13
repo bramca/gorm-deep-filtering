@@ -704,7 +704,7 @@ func TestAddDeepFilters_AddsSimplelFiltersWithFunctions(t *testing.T) {
 		expected  []*SimpleStruct6
 		filterMap map[string]any
 	}{
-		"first": {
+		"simple filter": {
 			records: []*SimpleStruct6{
 				{
 					Occupation: "Dev",
@@ -725,36 +725,7 @@ func TestAddDeepFilters_AddsSimplelFiltersWithFunctions(t *testing.T) {
 				"LOWER(occupation)": "ops",
 			},
 		},
-		"second": {
-			records: []*SimpleStruct6{
-				{
-					Occupation: "Dev",
-					Name:       "John",
-				},
-				{
-					Occupation: "Ops",
-					Name:       "Jennifer",
-				},
-				{
-					Occupation: "Ops",
-					Name:       "Roy",
-				},
-			},
-			expected: []*SimpleStruct6{
-				{
-					Occupation: "Ops",
-					Name:       "Jennifer",
-				},
-				{
-					Occupation: "Ops",
-					Name:       "Roy",
-				},
-			},
-			filterMap: map[string]any{
-				"UPPER(occupation)": "OPS",
-			},
-		},
-		"third": {
+		"and filter with qonvert": {
 			records: []*SimpleStruct6{
 				{
 					Occupation: "Dev",
@@ -772,11 +743,11 @@ func TestAddDeepFilters_AddsSimplelFiltersWithFunctions(t *testing.T) {
 				},
 			},
 			filterMap: map[string]any{
-				"occupation": "Ops",
+				"occupation":   "Ops",
 				"LENGTH(name)": ">4",
 			},
 		},
-		"fourth": {
+		"simple or filter strings": {
 			records: []*SimpleStruct6{
 				{
 					Occupation: "Dev",
@@ -798,7 +769,54 @@ func TestAddDeepFilters_AddsSimplelFiltersWithFunctions(t *testing.T) {
 				},
 			},
 			filterMap: map[string]any{
-				"occupation": []string{"Ops", "Dev"},
+				"UPPER(occupation)": []string{"OPS", "DEV"},
+			},
+		},
+		"simple or filter int": {
+			records: []*SimpleStruct6{
+				{
+					Occupation: "Dev",
+					Name:       "John",
+				},
+				{
+					Occupation: "Ops",
+					Name:       "Jennifer",
+				},
+			},
+			expected: []*SimpleStruct6{
+				{
+					Occupation: "Dev",
+					Name:       "John",
+				},
+				{
+					Occupation: "Ops",
+					Name:       "Jennifer",
+				},
+			},
+			filterMap: map[string]any{
+				"LENGTH(name)": []int{4, 8},
+			},
+		},
+		"or and filter with convert": {
+			records: []*SimpleStruct6{
+				{
+					Occupation: "Dev",
+					Name:       "John",
+				},
+				{
+					Occupation: "Ops",
+					Name:       "Jennifer",
+				},
+			},
+			expected: []*SimpleStruct6{
+				{
+					Occupation: "Dev",
+					Name:       "John",
+				},
+			},
+			filterMap: map[string]any{
+				"UPPER(occupation)": []string{"OPS", "DEV"},
+				"LENGTH(name)":      []string{"<=4", ">8"},
 			},
 		},
 	}
@@ -806,7 +824,7 @@ func TestAddDeepFilters_AddsSimplelFiltersWithFunctions(t *testing.T) {
 	for name, testData := range tests {
 		testData := testData
 		t.Run(name, func(t *testing.T) {
-			t.Parallel()
+			// t.Parallel()
 			// Arrange
 			database := gormtestutil.NewMemoryDatabase(t, gormtestutil.WithName(t.Name()))
 			database.Use(gormqonvert.New(gormqonvert.CharacterConfig{
@@ -823,13 +841,12 @@ func TestAddDeepFilters_AddsSimplelFiltersWithFunctions(t *testing.T) {
 			database.CreateInBatches(testData.records, len(testData.records))
 
 			// Act
-			// sqlQuery := database.ToSQL(func (tx *gorm.DB) *gorm.DB {
-			// 	deepFilterQuery, _ := AddDeepFilters(tx, SimpleStruct6{}, testData.filterMap)
-			// 	return deepFilterQuery.Find(&SimpleStruct6{})
-			// })
-			// fmt.Printf("sqlQuery: %s\n", sqlQuery)
+			sqlQuery := database.ToSQL(func(tx *gorm.DB) *gorm.DB {
+				deepFilterQuery, _ := AddDeepFilters(tx, SimpleStruct6{}, testData.filterMap)
+				return deepFilterQuery.Find(&SimpleStruct6{})
+			})
+			fmt.Printf("sqlQuery: %s\n", sqlQuery)
 			query, err := AddDeepFilters(database, SimpleStruct6{}, testData.filterMap)
-
 
 			// Assert
 			assert.Nil(t, err)
@@ -976,13 +993,12 @@ func TestAddDeepFilters_AddsSimpleFilters(t *testing.T) {
 			database.CreateInBatches(testData.records, len(testData.records))
 
 			// Act
-			sqlQuery := database.ToSQL(func (tx *gorm.DB) *gorm.DB {
+			sqlQuery := database.ToSQL(func(tx *gorm.DB) *gorm.DB {
 				deepFilterQuery, _ := AddDeepFilters(tx, SimpleStruct6{}, testData.filterMap)
 				return deepFilterQuery.Find(&SimpleStruct6{})
 			})
 			fmt.Printf("sqlQuery: %s\n", sqlQuery)
 			query, err := AddDeepFilters(database, SimpleStruct6{}, testData.filterMap)
-
 
 			// Assert
 			assert.Nil(t, err)

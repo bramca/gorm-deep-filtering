@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 
-	"github.com/sirupsen/logrus"
 	"github.com/survivorbat/go-tsyncmap"
 	gormqonvert "github.com/survivorbat/gorm-query-convert"
 	"gorm.io/gorm/schema"
@@ -101,8 +101,6 @@ func AddDeepFilters(db *gorm.DB, objectType any, filters ...map[string]any) (*go
 		qonvertMap[qonvertPluginConfig.FieldByName("NotLikePrefix").String()] = "%s NOT LIKE '%%%s%%'"
 	}
 
-	logrus.Infof("qonvertMap: %+v\n", qonvertMap)
-
 	// Go through the filters
 	for _, filterObject := range filters {
 		// Go through all the keys of the filters
@@ -134,6 +132,7 @@ func AddDeepFilters(db *gorm.DB, objectType any, filters ...map[string]any) (*go
 
 					if _, ok := givenFilter.([]string); ok {
 						for _, filter := range givenFilter.([]string) {
+							containedQonvert := false
 							for qonvertField, qonvertValue := range qonvertMap {
 								if !strings.Contains(filter, qonvertField) {
 									continue
@@ -147,16 +146,49 @@ func AddDeepFilters(db *gorm.DB, objectType any, filters ...map[string]any) (*go
 									}
 								} else {
 									filter = strings.Replace(filter, qonvertValue, "", 1)
-									filterString = fmt.Sprintf("%s %s %s", fieldName, qonvertValue, fmt.Sprintf("'%s'", filter))
+									if filterString == "" {
+										filterString = prepareFilterValue(fieldName, qonvertValue, filter)
+									} else {
+										filterString = fmt.Sprintf("%s OR %s", filterString, prepareFilterValue(fieldName, qonvertValue, filter))
+									}
 								}
 
+								containedQonvert = true
 								break
+							}
+
+							if !containedQonvert {
+								if filterString == "" {
+									filterString = fmt.Sprintf("%s = '%s'", fieldName, filter)
+								} else {
+									filterString = fmt.Sprintf("%s OR %s", filterString, fmt.Sprintf("%s = '%s'", fieldName, filter))
+								}
+							}
+						}
+					}
+
+					if _, ok := givenFilter.([]int); ok {
+						for _, filter := range givenFilter.([]int) {
+							if filterString == "" {
+								filterString = fmt.Sprintf("%s = %d", fieldName, filter)
+							} else {
+								filterString = fmt.Sprintf("%s OR %s", filterString, fmt.Sprintf("%s = %d", fieldName, filter))
+							}
+						}
+					}
+
+					if _, ok := givenFilter.([]bool); ok {
+						for _, filter := range givenFilter.([]bool) {
+							if filterString == "" {
+								filterString = fmt.Sprintf("%s = %t", fieldName, filter)
+							} else {
+								filterString = fmt.Sprintf("%s OR %s", filterString, fmt.Sprintf("%s = %t", fieldName, filter))
 							}
 						}
 					}
 
 					for qonvertField, qonvertValue := range qonvertMap {
-						if !strings.Contains(givenFilter.(string), qonvertField) {
+						if filterStrCast, castOk := givenFilter.(string); !castOk || !strings.Contains(filterStrCast, qonvertField) {
 							continue
 						}
 
@@ -168,12 +200,12 @@ func AddDeepFilters(db *gorm.DB, objectType any, filters ...map[string]any) (*go
 							}
 						} else {
 							givenFilter = strings.Replace(givenFilter.(string), qonvertValue, "", 1)
-							filterString = fmt.Sprintf("%s %s %s", fieldName, qonvertValue, fmt.Sprintf("'%s'", givenFilter))
+							filterString = prepareFilterValue(fieldName, qonvertValue, givenFilter.(string))
 						}
 					}
 
 					if filterString == "" {
-						filterString = fmt.Sprintf("%s = '%s'", fieldName, givenFilter)
+						filterString = prepareFilterValueCast(fieldName, "=", givenFilter)
 					}
 
 					break
@@ -183,7 +215,6 @@ func AddDeepFilters(db *gorm.DB, objectType any, filters ...map[string]any) (*go
 					return nil, fmt.Errorf("failed to add filters for '%s.%s': %w", schemaInfo.Table, fieldName, ErrFieldDoesNotExist)
 				}
 				simpleFilter[fieldName] = givenFilter
-				logrus.Infof("simpleFilter: %+v", simpleFilter)
 			}
 		}
 	}
@@ -224,6 +255,31 @@ type nestedType struct {
 type iKind[T any] interface {
 	Kind() reflect.Kind
 	Elem() T
+}
+
+// prepareFilterValue checks if the given filter can be converted to an int or bool and gives back the correct SQL value for it
+func prepareFilterValue(fieldName string, operator string, filterValue string) string {
+	if value, err := strconv.Atoi(filterValue); err == nil {
+		return fmt.Sprintf("%s %s %d", fieldName, operator, value)
+	}
+
+	if value, err := strconv.ParseBool(filterValue); err == nil {
+		return fmt.Sprintf("%s %s %t", fieldName, operator, value)
+	}
+
+	return fmt.Sprintf("%s %s '%s'", fieldName, operator, filterValue)
+}
+
+// prepareFilterValue checks if the given filter can be converted to an int or bool and gives back the correct SQL value for it
+func prepareFilterValueCast(fieldName string, operator string, filterValue any) string {
+	if filterIntCast, castOk := filterValue.(int); castOk {
+		return fmt.Sprintf("%s %s %d", fieldName, operator, filterIntCast)
+	}
+	if filterBoolCast, castOk := filterValue.(bool); castOk {
+		return fmt.Sprintf("%s %s %t", fieldName, operator, filterBoolCast)
+	}
+
+	return fmt.Sprintf("%s %s '%s'", fieldName, operator, filterValue.(string))
 }
 
 // ensureConcrete ensures that the given value is a value and not a pointer, if it is, convert it to its element type
