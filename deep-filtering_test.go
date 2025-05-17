@@ -843,7 +843,7 @@ func TestAddDeepFilters_AddsSimplelFiltersWithFunctions(t *testing.T) {
 			// Act
 			sqlQuery := database.ToSQL(func(tx *gorm.DB) *gorm.DB {
 				deepFilterQuery, _ := AddDeepFilters(tx, SimpleStruct6{}, testData.filterMap)
-				return deepFilterQuery.Find(&SimpleStruct6{})
+				return deepFilterQuery.Find([]*SimpleStruct6{})
 			})
 			fmt.Printf("sqlQuery: %s\n", sqlQuery)
 			query, err := AddDeepFilters(database, SimpleStruct6{}, testData.filterMap)

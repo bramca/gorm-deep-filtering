@@ -85,7 +85,7 @@ func AddDeepFilters(db *gorm.DB, objectType any, filters ...map[string]any) (*go
 	relationalTypesInfo := getDatabaseFieldsOfType(db.NamingStrategy, schemaInfo)
 
 	simpleFilter := map[string]any{}
-	filterString := ""
+	totalFilterString := ""
 	functionRegex := regexp.MustCompile(`.*?\((.*?)\)`)
 	qonvertMap := map[string]string{}
 
@@ -105,6 +105,7 @@ func AddDeepFilters(db *gorm.DB, objectType any, filters ...map[string]any) (*go
 	for _, filterObject := range filters {
 		// Go through all the keys of the filters
 		for fieldName, givenFilter := range filterObject {
+			filterString := ""
 			switch givenFilter.(type) {
 			// WithFilters for relational objects
 			case map[string]any:
@@ -134,6 +135,8 @@ func AddDeepFilters(db *gorm.DB, objectType any, filters ...map[string]any) (*go
 						for _, filter := range givenFilter.([]string) {
 							containedQonvert := false
 							for qonvertField, qonvertValue := range qonvertMap {
+								// TODO: this check should be revisited to start with the longest possible substring matching
+								// for qonvertFields like < and <= -> should not overlap
 								if !strings.Contains(filter, qonvertField) {
 									continue
 								}
@@ -165,6 +168,13 @@ func AddDeepFilters(db *gorm.DB, objectType any, filters ...map[string]any) (*go
 								}
 							}
 						}
+
+						filterString = fmt.Sprintf("(%s)", filterString)
+						if totalFilterString != "" {
+							totalFilterString += " AND "
+						}
+						totalFilterString += filterString
+						break
 					}
 
 					if _, ok := givenFilter.([]int); ok {
@@ -175,6 +185,13 @@ func AddDeepFilters(db *gorm.DB, objectType any, filters ...map[string]any) (*go
 								filterString = fmt.Sprintf("%s OR %s", filterString, fmt.Sprintf("%s = %d", fieldName, filter))
 							}
 						}
+
+						filterString = fmt.Sprintf("(%s)", filterString)
+						if totalFilterString != "" {
+							totalFilterString += " AND "
+						}
+						totalFilterString += filterString
+						break
 					}
 
 					if _, ok := givenFilter.([]bool); ok {
@@ -185,9 +202,19 @@ func AddDeepFilters(db *gorm.DB, objectType any, filters ...map[string]any) (*go
 								filterString = fmt.Sprintf("%s OR %s", filterString, fmt.Sprintf("%s = %t", fieldName, filter))
 							}
 						}
+
+						filterString = fmt.Sprintf("(%s)", filterString)
+						if totalFilterString != "" {
+							totalFilterString += " AND "
+						}
+						totalFilterString += filterString
+						break
 					}
 
 					for qonvertField, qonvertValue := range qonvertMap {
+
+						// TODO: this check should be revisited to start with the longest possible substring matching
+						// for qonvertFields like < and <= -> should not overlap
 						if filterStrCast, castOk := givenFilter.(string); !castOk || !strings.Contains(filterStrCast, qonvertField) {
 							continue
 						}
@@ -208,6 +235,11 @@ func AddDeepFilters(db *gorm.DB, objectType any, filters ...map[string]any) (*go
 						filterString = prepareFilterValueCast(fieldName, "=", givenFilter)
 					}
 
+					filterString = fmt.Sprintf("(%s)", filterString)
+					if totalFilterString != "" {
+						totalFilterString += " AND "
+					}
+					totalFilterString += filterString
 					break
 				}
 
@@ -220,8 +252,8 @@ func AddDeepFilters(db *gorm.DB, objectType any, filters ...map[string]any) (*go
 	}
 
 	// Add simple filters
-	if filterString != "" {
-		db = db.Where(filterString)
+	if totalFilterString != "" {
+		db = db.Where(totalFilterString)
 	}
 	db = db.Where(simpleFilter)
 
