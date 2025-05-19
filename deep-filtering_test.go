@@ -802,6 +802,7 @@ func TestAddDeepFilters_AddsSimplelFiltersWithFunctions(t *testing.T) {
 			},
 			expectedQuery: "SELECT * FROM `simple_struct6` WHERE (LENGTH(name) = 4 OR LENGTH(name) = 8)",
 		},
+		// TODO: this test result is flaky in the expectedQuery check (order of the AND/OR operations is random)
 		"or and filter with convert": {
 			records: []*SimpleStruct6{
 				{
@@ -877,6 +878,7 @@ func TestAddDeepFilters_AddsSimplelFiltersWithFunctions(t *testing.T) {
 			},
 			expectedQuery: "SELECT * FROM `simple_struct6` WHERE (UPPER(occupation) LIKE '%EV%' OR UPPER(occupation) LIKE '%OP%')",
 		},
+		// TODO: this test result is flaky in the expectedQuery check (order of the AND/OR operations is random)
 		"and or filter with like prefix": {
 			records: []*SimpleStruct6{
 				{

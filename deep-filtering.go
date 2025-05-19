@@ -125,6 +125,7 @@ func AddDeepFilters(db *gorm.DB, objectType any, filters ...map[string]any) (*go
 
 			// Simple filters (string, int, bool etc.)
 			default:
+				// If the simple filter contains a function, build the query different
 				if functionRegex.MatchString(fieldName) {
 					checkFieldName := functionRegex.ReplaceAllString(fieldName, "$1")
 					if _, ok := schemaInfo.FieldsByDBName[checkFieldName]; !ok {
