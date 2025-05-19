@@ -1074,11 +1074,6 @@ func TestAddDeepFilters_AddsSimpleFilters(t *testing.T) {
 			database.CreateInBatches(testData.records, len(testData.records))
 
 			// Act
-			sqlQuery := database.ToSQL(func(tx *gorm.DB) *gorm.DB {
-				deepFilterQuery, _ := AddDeepFilters(tx, SimpleStruct6{}, testData.filterMap)
-				return deepFilterQuery.Find(&SimpleStruct6{})
-			})
-			fmt.Printf("sqlQuery: %s\n", sqlQuery)
 			query, err := AddDeepFilters(database, SimpleStruct6{}, testData.filterMap)
 
 			// Assert
@@ -1094,7 +1089,6 @@ func TestAddDeepFilters_AddsSimpleFilters(t *testing.T) {
 	}
 }
 
-// TODO: Test functions with nested structs
 func TestAddDeepFilters_AddsDeepFiltersWithOneToManyWithFunctions(t *testing.T) {
 	t.Parallel()
 	t.Cleanup(cleanupCache)
@@ -1102,8 +1096,9 @@ func TestAddDeepFilters_AddsDeepFiltersWithOneToManyWithFunctions(t *testing.T) 
 		records   []*ComplexStruct1
 		expected  []ComplexStruct1
 		filterMap map[string]any
+		expectedQuery string
 	}{
-		"looking for 1 katherina": {
+		"simple filter with function": {
 			records: []*ComplexStruct1{
 				{
 					ID:        uuid.MustParse("59aa5a8f-c5de-44fa-9355-080650481687"),
@@ -1141,11 +1136,12 @@ func TestAddDeepFilters_AddsDeepFiltersWithOneToManyWithFunctions(t *testing.T) 
 			},
 			filterMap: map[string]any{
 				"nested": map[string]any{
-					"name": "Katherina",
+					"LOWER(name)": "katherina",
 				},
 			},
+			expectedQuery: "SELECT * FROM `complex_struct1` WHERE nested_ref IN (SELECT `id` FROM `nested_struct4` WHERE (LOWER(name) = 'katherina'))",
 		},
-		"looking for 1 katherina and value 11": {
+		"more complex query with simple filter function": {
 			records: []*ComplexStruct1{
 				{
 					ID:        uuid.MustParse("59aa5a8f-c5de-44fa-9355-080650481687"),
@@ -1183,12 +1179,13 @@ func TestAddDeepFilters_AddsDeepFiltersWithOneToManyWithFunctions(t *testing.T) 
 			},
 			filterMap: map[string]any{
 				"nested": map[string]any{
-					"name": "Katherina",
+					"UPPER(name)": "KATHERINA",
 				},
 				"value": 11,
 			},
+			expectedQuery: "SELECT * FROM `complex_struct1` WHERE nested_ref IN (SELECT `id` FROM `nested_struct4` WHERE (UPPER(name) = 'KATHERINA')) AND `value` = 11",
 		},
-		"looking for 2 vanessas": {
+		"or query with function": {
 			records: []*ComplexStruct1{
 				{
 					ID:        uuid.MustParse("c98dc9f2-bfa5-4ab5-9cbb-76800e09e512"),
@@ -1245,11 +1242,13 @@ func TestAddDeepFilters_AddsDeepFiltersWithOneToManyWithFunctions(t *testing.T) 
 			},
 			filterMap: map[string]any{
 				"nested": map[string]any{
-					"name": "Vanessa",
+					"LOWER(name)": "vanessa",
+					"UPPER(occupation)": []string{"DEV", "OPS"},
 				},
 			},
+			expectedQuery: "SELECT * FROM `complex_struct1` WHERE nested_ref IN (SELECT `id` FROM `nested_struct4` WHERE (LOWER(name) = 'vanessa') AND (UPPER(occupation) = 'DEV' OR UPPER(occupation) = 'OPS'))",
 		},
-		"looking for both coat and joke": {
+		"query with qonvert and function": {
 			records: []*ComplexStruct1{
 				{
 					ID:        uuid.MustParse("59aa5a8f-c5de-44fa-9355-080650481687"),
@@ -1274,16 +1273,6 @@ func TestAddDeepFilters_AddsDeepFiltersWithOneToManyWithFunctions(t *testing.T) 
 			},
 			expected: []ComplexStruct1{
 				{
-					ID:        uuid.MustParse("59aa5a8f-c5de-44fa-9355-080650481687"),
-					Value:     1,
-					NestedRef: uuid.MustParse("71766db4-eb17-4457-a85c-8b89af5a319d"), // A
-					Nested: &NestedStruct4{
-						ID:         uuid.MustParse("71766db4-eb17-4457-a85c-8b89af5a319d"), // A
-						Name:       "Coat",
-						Occupation: "Product Owner",
-					},
-				},
-				{
 					ID:        uuid.MustParse("23292d51-4768-4c41-8475-6d4c9f0c6f69"),
 					Value:     2,
 					NestedRef: uuid.MustParse("4604bb79-ee05-4a09-b874-c3af8964d8c4"), // BObject
@@ -1296,9 +1285,12 @@ func TestAddDeepFilters_AddsDeepFiltersWithOneToManyWithFunctions(t *testing.T) 
 			},
 			filterMap: map[string]any{
 				"nested": map[string]any{
-					"name": []string{"Joke", "Coat"},
+					"UPPER(name)": []string{"~OK", "~AT"},
+					"LENGTH(occupation)": ">=3",
 				},
+				"value": 2,
 			},
+			expectedQuery: "SELECT * FROM `complex_struct1` WHERE nested_ref IN (SELECT `id` FROM `nested_struct4` WHERE (UPPER(name) LIKE '%OK%' OR UPPER(name) LIKE '%AT%') AND (LENGTH(occupation) >= 3)) AND `value` = 2",
 		},
 	}
 
@@ -1308,12 +1300,25 @@ func TestAddDeepFilters_AddsDeepFiltersWithOneToManyWithFunctions(t *testing.T) 
 			t.Parallel()
 			// Arrange
 			database := gormtestutil.NewMemoryDatabase(t, gormtestutil.WithName(t.Name()))
+			database.Use(gormqonvert.New(gormqonvert.CharacterConfig{
+				GreaterThanPrefix:      ">",
+				GreaterOrEqualToPrefix: ">=",
+				LessThanPrefix:         "<",
+				LessOrEqualToPrefix:    "<=",
+				NotEqualToPrefix:       "!=",
+				LikePrefix:             "~",
+				NotLikePrefix:          "!~",
+			}))
 			_ = database.AutoMigrate(&ComplexStruct1{}, &NestedStruct4{})
 
 			// Crate records
 			database.CreateInBatches(testData.records, len(testData.records))
 
 			// Act
+			sqlQuery := database.ToSQL(func(tx *gorm.DB) *gorm.DB {
+				deepFilterQuery, _ := AddDeepFilters(tx, ComplexStruct1{}, testData.filterMap)
+				return deepFilterQuery.Find(&ComplexStruct1{})
+			})
 			query, err := AddDeepFilters(database, ComplexStruct1{}, testData.filterMap)
 
 			// Assert
@@ -1327,6 +1332,7 @@ func TestAddDeepFilters_AddsDeepFiltersWithOneToManyWithFunctions(t *testing.T) 
 				assert.Nil(t, res.Error)
 
 				assert.Equal(t, testData.expected, result)
+				assert.Equal(t, testData.expectedQuery, sqlQuery)
 			}
 		})
 	}
@@ -2282,6 +2288,52 @@ func TestAddDeepFilters_ReturnsErrorOnNonExistingFields(t *testing.T) {
 					"tags": map[string]any{
 						"tag_value": map[string]any{
 							"key": "test-python-value",
+						},
+					},
+				},
+			},
+			expectedErrorMsg: "failed to add filters for 'tag_values.key': field does not exist",
+		},
+		"one to many filter with function": {
+			records: []*ComplexStruct3{
+				{
+					ID:   uuid.MustParse("59aa5a8f-c5de-44fa-9355-080650481687"), // A
+					Name: "Python",
+					Tags: []*Tag{
+						{
+							ID:               uuid.MustParse("1c83a7c9-e95d-4dba-b858-5eb4e34ebcf2"),
+							ComplexStructRef: uuid.MustParse("59aa5a8f-c5de-44fa-9355-080650481687"),
+							Key:              "type",
+							Value:            "interpreted",
+							TagValue: &TagValue{
+								ID:    uuid.MustParse("38769e29-e945-451f-a551-3e5811a5d363"),
+								Value: "test-python-value",
+							},
+						},
+					},
+				},
+				{
+					ID:   uuid.MustParse("23292d51-4768-4c41-8475-6d4c9f0c6f69"), // BObject
+					Name: "Go",
+					Tags: []*Tag{
+						{
+							ID:               uuid.MustParse("17983ba8-2d26-4e36-bb6b-6c5a04b6606e"),
+							ComplexStructRef: uuid.MustParse("23292d51-4768-4c41-8475-6d4c9f0c6f69"),
+							Key:              "type",
+							Value:            "compiled",
+							TagValue: &TagValue{
+								ID:    uuid.MustParse("e75a2f7e-0e1c-4f9c-a8ce-af90f1b64baa"),
+								Value: "test-go-value",
+							},
+						},
+					},
+				},
+			},
+			filterMap: []map[string]any{
+				{
+					"tags": map[string]any{
+						"tag_value": map[string]any{
+							"LOWER(key)": "test-python-value",
 						},
 					},
 				},
