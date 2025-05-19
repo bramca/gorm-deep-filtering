@@ -134,37 +134,39 @@ func AddDeepFilters(db *gorm.DB, objectType any, filters ...map[string]any) (*go
 					if _, ok := givenFilter.([]string); ok {
 						for _, filter := range givenFilter.([]string) {
 							containedQonvert := false
+							qonvertOperator := ""
+							qonvertFilter := ""
 							for qonvertField, qonvertValue := range qonvertMap {
-								// TODO: this check should be revisited to start with the longest possible substring matching
-								// for qonvertFields like < and <= -> should not overlap
-								if !strings.Contains(filter, qonvertField) {
-									continue
+								// Find longest possible prefix match in filter
+								// (e.g. to make sure <= is fully matched and not overwritten by <)
+								if strings.HasPrefix(filter, qonvertField) && len(qonvertField) > len(qonvertFilter) {
+									qonvertOperator = qonvertValue
+									qonvertFilter = qonvertField
+									containedQonvert = true
 								}
-
-								if strings.Contains(qonvertValue, "%") {
-									if filterString == "" {
-										filterString = fmt.Sprintf(qonvertValue, fieldName, filter)
-									} else {
-										filterString = fmt.Sprintf("%s OR %s", filterString, fmt.Sprintf(qonvertValue, fieldName, filter))
-									}
-								} else {
-									filter = strings.Replace(filter, qonvertValue, "", 1)
-									if filterString == "" {
-										filterString = prepareFilterValue(fieldName, qonvertValue, filter)
-									} else {
-										filterString = fmt.Sprintf("%s OR %s", filterString, prepareFilterValue(fieldName, qonvertValue, filter))
-									}
-								}
-
-								containedQonvert = true
-								break
 							}
+
 
 							if !containedQonvert {
 								if filterString == "" {
 									filterString = fmt.Sprintf("%s = '%s'", fieldName, filter)
 								} else {
 									filterString = fmt.Sprintf("%s OR %s", filterString, fmt.Sprintf("%s = '%s'", fieldName, filter))
+								}
+							} else {
+								filter = strings.Replace(filter, qonvertFilter, "", 1)
+								if strings.Contains(qonvertOperator, "%") {
+									if filterString == "" {
+										filterString = fmt.Sprintf(qonvertOperator, fieldName, filter)
+									} else {
+										filterString = fmt.Sprintf("%s OR %s", filterString, fmt.Sprintf(qonvertOperator, fieldName, filter))
+									}
+								} else {
+									if filterString == "" {
+										filterString = prepareFilterValue(fieldName, qonvertOperator, filter)
+									} else {
+										filterString = fmt.Sprintf("%s OR %s", filterString, prepareFilterValue(fieldName, qonvertOperator, filter))
+									}
 								}
 							}
 						}
@@ -211,23 +213,30 @@ func AddDeepFilters(db *gorm.DB, objectType any, filters ...map[string]any) (*go
 						break
 					}
 
+					containedQonvert := false
+					qonvertOperator := ""
+					qonvertFilter := ""
 					for qonvertField, qonvertValue := range qonvertMap {
-
-						// TODO: this check should be revisited to start with the longest possible substring matching
-						// for qonvertFields like < and <= -> should not overlap
-						if filterStrCast, castOk := givenFilter.(string); !castOk || !strings.Contains(filterStrCast, qonvertField) {
-							continue
+						// Find longest possible prefix match in filter
+						// (e.g. to make sure <= is fully matched and not overwritten by <)
+						if filterStrCast, castOk := givenFilter.(string); castOk && strings.HasPrefix(filterStrCast, qonvertField) && len(qonvertField) > len(qonvertFilter) {
+							qonvertOperator = qonvertValue
+							qonvertFilter = qonvertField
+							containedQonvert = true
 						}
 
-						if strings.Contains(qonvertField, "%") {
+					}
+
+					if containedQonvert {
+						givenFilter = strings.Replace(givenFilter.(string), qonvertFilter, "", 1)
+						if strings.Contains(qonvertOperator, "%") {
 							if filterString == "" {
-								filterString = fmt.Sprintf(qonvertValue, fieldName, givenFilter)
+								filterString = fmt.Sprintf(qonvertOperator, fieldName, givenFilter)
 							} else {
-								filterString = fmt.Sprintf("%s OR %s", filterString, fmt.Sprintf(qonvertValue, fieldName, givenFilter))
+								filterString = fmt.Sprintf("%s OR %s", filterString, fmt.Sprintf(qonvertOperator, fieldName, givenFilter))
 							}
 						} else {
-							givenFilter = strings.Replace(givenFilter.(string), qonvertValue, "", 1)
-							filterString = prepareFilterValue(fieldName, qonvertValue, givenFilter.(string))
+							filterString = prepareFilterValue(fieldName, qonvertOperator, givenFilter.(string))
 						}
 					}
 
