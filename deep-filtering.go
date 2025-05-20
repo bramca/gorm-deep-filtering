@@ -147,7 +147,6 @@ func AddDeepFilters(db *gorm.DB, objectType any, filters ...map[string]any) (*go
 								}
 							}
 
-
 							if !containedQonvert {
 								if filterString == "" {
 									filterString = fmt.Sprintf("%s = '%s'", fieldName, filter)
@@ -186,23 +185,6 @@ func AddDeepFilters(db *gorm.DB, objectType any, filters ...map[string]any) (*go
 								filterString = fmt.Sprintf("%s = %d", fieldName, filter)
 							} else {
 								filterString = fmt.Sprintf("%s OR %s", filterString, fmt.Sprintf("%s = %d", fieldName, filter))
-							}
-						}
-
-						filterString = fmt.Sprintf("(%s)", filterString)
-						if totalFilterString != "" {
-							totalFilterString += " AND "
-						}
-						totalFilterString += filterString
-						break
-					}
-
-					if _, ok := givenFilter.([]bool); ok {
-						for _, filter := range givenFilter.([]bool) {
-							if filterString == "" {
-								filterString = fmt.Sprintf("%s = %t", fieldName, filter)
-							} else {
-								filterString = fmt.Sprintf("%s OR %s", filterString, fmt.Sprintf("%s = %t", fieldName, filter))
 							}
 						}
 

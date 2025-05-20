@@ -702,7 +702,7 @@ func TestAddDeepFilters_AddsSimplelFiltersWithFunctions(t *testing.T) {
 	tests := map[string]struct {
 		records       []*SimpleStruct6
 		expected      []*SimpleStruct6
-		filterMap     map[string]any
+		filters       []map[string]any
 		expectedQuery string
 	}{
 		"simple filter": {
@@ -722,10 +722,64 @@ func TestAddDeepFilters_AddsSimplelFiltersWithFunctions(t *testing.T) {
 					Name:       "Jennifer",
 				},
 			},
-			filterMap: map[string]any{
-				"LOWER(occupation)": "ops",
+			filters: []map[string]any{
+				{
+					"LOWER(occupation)": "ops",
+				},
 			},
 			expectedQuery: "SELECT * FROM `simple_struct6` WHERE (LOWER(occupation) = 'ops')",
+		},
+		"simple like filter": {
+			records: []*SimpleStruct6{
+				{
+					Occupation: "Dev",
+					Name:       "John",
+				},
+				{
+					Occupation: "Ops",
+					Name:       "Jennifer",
+				},
+			},
+			expected: []*SimpleStruct6{
+				{
+					Occupation: "Ops",
+					Name:       "Jennifer",
+				},
+			},
+			filters: []map[string]any{
+				{
+					"LOWER(occupation)": "~op",
+				},
+			},
+			expectedQuery: "SELECT * FROM `simple_struct6` WHERE (LOWER(occupation) LIKE '%op%')",
+		},
+		"simple like filter with or": {
+			records: []*SimpleStruct6{
+				{
+					Occupation: "Dev",
+					Name:       "John",
+				},
+				{
+					Occupation: "Ops",
+					Name:       "Jennifer",
+				},
+			},
+			expected: []*SimpleStruct6{
+				{
+					Occupation: "Dev",
+					Name:       "John",
+				},
+				{
+					Occupation: "Ops",
+					Name:       "Jennifer",
+				},
+			},
+			filters: []map[string]any{
+				{
+					"LOWER(occupation)": []string{"~op", "~de"},
+				},
+			},
+			expectedQuery: "SELECT * FROM `simple_struct6` WHERE (LOWER(occupation) LIKE '%op%' OR LOWER(occupation) LIKE '%de%')",
 		},
 		"and filter with qonvert": {
 			records: []*SimpleStruct6{
@@ -744,9 +798,13 @@ func TestAddDeepFilters_AddsSimplelFiltersWithFunctions(t *testing.T) {
 					Name:       "Jennifer",
 				},
 			},
-			filterMap: map[string]any{
-				"occupation":   "Ops",
-				"LENGTH(name)": ">4",
+			filters: []map[string]any{
+				{
+					"occupation": "Ops",
+				},
+				{
+					"LENGTH(name)": ">4",
+				},
 			},
 			expectedQuery: "SELECT * FROM `simple_struct6` WHERE (LENGTH(name) > 4) AND `occupation` = \"Ops\"",
 		},
@@ -771,8 +829,10 @@ func TestAddDeepFilters_AddsSimplelFiltersWithFunctions(t *testing.T) {
 					Name:       "Jennifer",
 				},
 			},
-			filterMap: map[string]any{
-				"UPPER(occupation)": []string{"OPS", "DEV"},
+			filters: []map[string]any{
+				{
+					"UPPER(occupation)": []string{"OPS", "DEV"},
+				},
 			},
 			expectedQuery: "SELECT * FROM `simple_struct6` WHERE (UPPER(occupation) = 'OPS' OR UPPER(occupation) = 'DEV')",
 		},
@@ -797,12 +857,13 @@ func TestAddDeepFilters_AddsSimplelFiltersWithFunctions(t *testing.T) {
 					Name:       "Jennifer",
 				},
 			},
-			filterMap: map[string]any{
-				"LENGTH(name)": []int{4, 8},
+			filters: []map[string]any{
+				{
+					"LENGTH(name)": []int{4, 8},
+				},
 			},
 			expectedQuery: "SELECT * FROM `simple_struct6` WHERE (LENGTH(name) = 4 OR LENGTH(name) = 8)",
 		},
-		// TODO: this test result is flaky in the expectedQuery check (order of the AND/OR operations is random)
 		"or and filter with convert": {
 			records: []*SimpleStruct6{
 				{
@@ -820,11 +881,15 @@ func TestAddDeepFilters_AddsSimplelFiltersWithFunctions(t *testing.T) {
 					Name:       "John",
 				},
 			},
-			filterMap: map[string]any{
-				"UPPER(occupation)": []string{"OPS", "DEV"},
-				"LENGTH(name)":      []string{"<=4", ">8"},
+			filters: []map[string]any{
+				{
+					"UPPER(occupation)": []string{"OPS", "DEV"},
+				},
+				{
+					"LENGTH(name)": []string{"<=4", ">8"},
+				},
 			},
-			expectedQuery: "SELECT * FROM `simple_struct6` WHERE (LENGTH(name) <= 4 OR LENGTH(name) > 8) AND (UPPER(occupation) = 'OPS' OR UPPER(occupation) = 'DEV')",
+			expectedQuery: "SELECT * FROM `simple_struct6` WHERE (UPPER(occupation) = 'OPS' OR UPPER(occupation) = 'DEV') AND (LENGTH(name) <= 4 OR LENGTH(name) > 8)",
 		},
 		"simple filter with like prefix": {
 			records: []*SimpleStruct6{
@@ -847,8 +912,10 @@ func TestAddDeepFilters_AddsSimplelFiltersWithFunctions(t *testing.T) {
 					Name:       "Jennifer",
 				},
 			},
-			filterMap: map[string]any{
-				"UPPER(name)": []string{"~J"},
+			filters: []map[string]any{
+				{
+					"UPPER(name)": []string{"~J"},
+				},
 			},
 			expectedQuery: "SELECT * FROM `simple_struct6` WHERE (UPPER(name) LIKE '%J%')",
 		},
@@ -873,12 +940,13 @@ func TestAddDeepFilters_AddsSimplelFiltersWithFunctions(t *testing.T) {
 					Name:       "Jennifer",
 				},
 			},
-			filterMap: map[string]any{
-				"UPPER(occupation)": []string{"~EV", "~OP"},
+			filters: []map[string]any{
+				{
+					"UPPER(occupation)": []string{"~EV", "~OP"},
+				},
 			},
 			expectedQuery: "SELECT * FROM `simple_struct6` WHERE (UPPER(occupation) LIKE '%EV%' OR UPPER(occupation) LIKE '%OP%')",
 		},
-		// TODO: this test result is flaky in the expectedQuery check (order of the AND/OR operations is random)
 		"and or filter with like prefix": {
 			records: []*SimpleStruct6{
 				{
@@ -896,11 +964,15 @@ func TestAddDeepFilters_AddsSimplelFiltersWithFunctions(t *testing.T) {
 					Name:       "Jennifer",
 				},
 			},
-			filterMap: map[string]any{
-				"UPPER(occupation)": []string{"!=DEV", "!~TEST"},
-				"LENGTH(name)":      ">=8",
+			filters: []map[string]any{
+				{
+					"UPPER(occupation)": []string{"!=DEV", "!~TEST"},
+				},
+				{
+					"LENGTH(name)": []int{3, 8},
+				},
 			},
-			expectedQuery: "SELECT * FROM `simple_struct6` WHERE (UPPER(occupation) != 'DEV' OR UPPER(occupation) NOT LIKE '%TEST%') AND (LENGTH(name) >= 8)",
+			expectedQuery: "SELECT * FROM `simple_struct6` WHERE (UPPER(occupation) != 'DEV' OR UPPER(occupation) NOT LIKE '%TEST%') AND (LENGTH(name) = 3 OR LENGTH(name) = 8)",
 		},
 	}
 
@@ -925,10 +997,10 @@ func TestAddDeepFilters_AddsSimplelFiltersWithFunctions(t *testing.T) {
 
 			// Act
 			sqlQuery := database.ToSQL(func(tx *gorm.DB) *gorm.DB {
-				deepFilterQuery, _ := AddDeepFilters(tx, SimpleStruct6{}, testData.filterMap)
+				deepFilterQuery, _ := AddDeepFilters(tx, SimpleStruct6{}, testData.filters...)
 				return deepFilterQuery.Find([]*SimpleStruct6{})
 			})
-			query, err := AddDeepFilters(database, SimpleStruct6{}, testData.filterMap)
+			query, err := AddDeepFilters(database, SimpleStruct6{}, testData.filters...)
 
 			// Assert
 			assert.Nil(t, err)
@@ -1095,9 +1167,9 @@ func TestAddDeepFilters_AddsDeepFiltersWithOneToManyWithFunctions(t *testing.T) 
 	t.Parallel()
 	t.Cleanup(cleanupCache)
 	tests := map[string]struct {
-		records   []*ComplexStruct1
-		expected  []ComplexStruct1
-		filterMap map[string]any
+		records       []*ComplexStruct1
+		expected      []ComplexStruct1
+		filters       []map[string]any
 		expectedQuery string
 	}{
 		"simple filter with function": {
@@ -1136,9 +1208,11 @@ func TestAddDeepFilters_AddsDeepFiltersWithOneToManyWithFunctions(t *testing.T) 
 					},
 				},
 			},
-			filterMap: map[string]any{
-				"nested": map[string]any{
-					"LOWER(name)": "katherina",
+			filters: []map[string]any{
+				{
+					"nested": map[string]any{
+						"LOWER(name)": "katherina",
+					},
 				},
 			},
 			expectedQuery: "SELECT * FROM `complex_struct1` WHERE nested_ref IN (SELECT `id` FROM `nested_struct4` WHERE (LOWER(name) = 'katherina'))",
@@ -1179,11 +1253,13 @@ func TestAddDeepFilters_AddsDeepFiltersWithOneToManyWithFunctions(t *testing.T) 
 					},
 				},
 			},
-			filterMap: map[string]any{
-				"nested": map[string]any{
-					"UPPER(name)": "KATHERINA",
+			filters: []map[string]any{
+				{
+					"nested": map[string]any{
+						"UPPER(name)": "KATHERINA",
+					},
+					"value": 11,
 				},
-				"value": 11,
 			},
 			expectedQuery: "SELECT * FROM `complex_struct1` WHERE nested_ref IN (SELECT `id` FROM `nested_struct4` WHERE (UPPER(name) = 'KATHERINA')) AND `value` = 11",
 		},
@@ -1242,13 +1318,19 @@ func TestAddDeepFilters_AddsDeepFiltersWithOneToManyWithFunctions(t *testing.T) 
 					},
 				},
 			},
-			filterMap: map[string]any{
-				"nested": map[string]any{
-					"LOWER(name)": "vanessa",
-					"UPPER(occupation)": []string{"DEV", "OPS"},
+			filters: []map[string]any{
+				{
+					"nested": map[string]any{
+						"LOWER(name)": "vanessa",
+					},
+				},
+				{
+					"nested": map[string]any{
+						"UPPER(occupation)": []string{"DEV", "OPS"},
+					},
 				},
 			},
-			expectedQuery: "SELECT * FROM `complex_struct1` WHERE nested_ref IN (SELECT `id` FROM `nested_struct4` WHERE (LOWER(name) = 'vanessa') AND (UPPER(occupation) = 'DEV' OR UPPER(occupation) = 'OPS'))",
+			expectedQuery: "SELECT * FROM `complex_struct1` WHERE nested_ref IN (SELECT `id` FROM `nested_struct4` WHERE (LOWER(name) = 'vanessa')) AND nested_ref IN (SELECT `id` FROM `nested_struct4` WHERE (UPPER(occupation) = 'DEV' OR UPPER(occupation) = 'OPS'))",
 		},
 		"query with qonvert and function": {
 			records: []*ComplexStruct1{
@@ -1285,12 +1367,14 @@ func TestAddDeepFilters_AddsDeepFiltersWithOneToManyWithFunctions(t *testing.T) 
 					},
 				},
 			},
-			filterMap: map[string]any{
-				"nested": map[string]any{
-					"UPPER(name)": []string{"~OK", "~AT"},
-					"LENGTH(occupation)": ">=3",
+			filters: []map[string]any{
+				{
+					"nested": map[string]any{
+						"UPPER(name)":        []string{"~OK", "~AT"},
+						"LENGTH(occupation)": ">=3",
+					},
+					"value": 2,
 				},
-				"value": 2,
 			},
 			expectedQuery: "SELECT * FROM `complex_struct1` WHERE nested_ref IN (SELECT `id` FROM `nested_struct4` WHERE (UPPER(name) LIKE '%OK%' OR UPPER(name) LIKE '%AT%') AND (LENGTH(occupation) >= 3)) AND `value` = 2",
 		},
@@ -1318,10 +1402,10 @@ func TestAddDeepFilters_AddsDeepFiltersWithOneToManyWithFunctions(t *testing.T) 
 
 			// Act
 			sqlQuery := database.ToSQL(func(tx *gorm.DB) *gorm.DB {
-				deepFilterQuery, _ := AddDeepFilters(tx, ComplexStruct1{}, testData.filterMap)
+				deepFilterQuery, _ := AddDeepFilters(tx, ComplexStruct1{}, testData.filters...)
 				return deepFilterQuery.Find(&ComplexStruct1{})
 			})
-			query, err := AddDeepFilters(database, ComplexStruct1{}, testData.filterMap)
+			query, err := AddDeepFilters(database, ComplexStruct1{}, testData.filters...)
 
 			// Assert
 			assert.Nil(t, err)
