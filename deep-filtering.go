@@ -86,7 +86,7 @@ func AddDeepFilters(db *gorm.DB, objectType any, filters ...map[string]any) (*go
 
 	simpleFilter := map[string]any{}
 	totalFilterString := ""
-	functionRegex := regexp.MustCompile(`.*?\((.*?)\)`)
+	functionRegex := regexp.MustCompile(`.*\((.*?)\)+`)
 	qonvertMap := map[string]string{}
 
 	if _, ok := db.Plugins[gormqonvert.New(gormqonvert.CharacterConfig{}).Name()]; ok {

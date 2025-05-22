@@ -692,7 +692,7 @@ func TestAddDeepFilters_ReturnsErrorOnUnknownFieldInformation(t *testing.T) {
 }
 
 func TestAddDeepFilters_AddsSimplelFiltersWithFunctions(t *testing.T) {
-	t.Parallel()
+	// t.Parallel()
 	t.Cleanup(cleanupCache)
 	type SimpleStruct6 struct {
 		Name       string
@@ -724,10 +724,10 @@ func TestAddDeepFilters_AddsSimplelFiltersWithFunctions(t *testing.T) {
 			},
 			filters: []map[string]any{
 				{
-					"LOWER(occupation)": "ops",
+					"LOWER(UPPER(occupation))": "ops",
 				},
 			},
-			expectedQuery: "SELECT * FROM `simple_struct6` WHERE (LOWER(occupation) = 'ops')",
+			expectedQuery: "SELECT * FROM `simple_struct6` WHERE (LOWER(UPPER(occupation)) = 'ops')",
 		},
 		"simple like filter": {
 			records: []*SimpleStruct6{
@@ -997,7 +997,8 @@ func TestAddDeepFilters_AddsSimplelFiltersWithFunctions(t *testing.T) {
 
 			// Act
 			sqlQuery := database.ToSQL(func(tx *gorm.DB) *gorm.DB {
-				deepFilterQuery, _ := AddDeepFilters(tx, SimpleStruct6{}, testData.filters...)
+				deepFilterQuery, err := AddDeepFilters(tx, SimpleStruct6{}, testData.filters...)
+				assert.Nil(t, err)
 				return deepFilterQuery.Find([]*SimpleStruct6{})
 			})
 			query, err := AddDeepFilters(database, SimpleStruct6{}, testData.filters...)
@@ -1211,11 +1212,11 @@ func TestAddDeepFilters_AddsDeepFiltersWithOneToManyWithFunctions(t *testing.T) 
 			filters: []map[string]any{
 				{
 					"nested": map[string]any{
-						"LOWER(name)": "katherina",
+						"LOWER(UPPER(name))": "katherina",
 					},
 				},
 			},
-			expectedQuery: "SELECT * FROM `complex_struct1` WHERE nested_ref IN (SELECT `id` FROM `nested_struct4` WHERE (LOWER(name) = 'katherina'))",
+			expectedQuery: "SELECT * FROM `complex_struct1` WHERE nested_ref IN (SELECT `id` FROM `nested_struct4` WHERE (LOWER(UPPER(name)) = 'katherina'))",
 		},
 		"more complex query with simple filter function": {
 			records: []*ComplexStruct1{
