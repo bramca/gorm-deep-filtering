@@ -1,9 +1,10 @@
 package deepgorm
 
 import (
+	"reflect"
+
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	"reflect"
 )
 
 // Compile-time interface check
