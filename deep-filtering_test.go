@@ -806,7 +806,7 @@ func TestAddDeepFilters_AddsSimplelFiltersWithFunctions(t *testing.T) {
 					"LENGTH(name)": ">4",
 				},
 			},
-			expectedQuery: "SELECT * FROM `simple_struct6` WHERE (LENGTH(name) > 4) AND `occupation` = \"Ops\"",
+			expectedQuery: "SELECT * FROM `simple_struct6` WHERE (LENGTH(name) > 4) AND `simple_struct6`.`occupation` = \"Ops\"",
 		},
 		"simple or filter strings": {
 			records: []*SimpleStruct6{
@@ -1262,7 +1262,7 @@ func TestAddDeepFilters_AddsDeepFiltersWithOneToManyWithFunctions(t *testing.T) 
 					"value": 11,
 				},
 			},
-			expectedQuery: "SELECT * FROM `complex_struct1` WHERE nested_ref IN (SELECT `id` FROM `nested_struct4` WHERE (UPPER(name) = 'KATHERINA')) AND `value` = 11",
+			expectedQuery: "SELECT * FROM `complex_struct1` WHERE nested_ref IN (SELECT `id` FROM `nested_struct4` WHERE (UPPER(name) = 'KATHERINA')) AND `complex_struct1`.`value` = 11",
 		},
 		"or query with function": {
 			records: []*ComplexStruct1{
@@ -1377,7 +1377,7 @@ func TestAddDeepFilters_AddsDeepFiltersWithOneToManyWithFunctions(t *testing.T) 
 					"value": 2,
 				},
 			},
-			expectedQuery: "SELECT * FROM `complex_struct1` WHERE nested_ref IN (SELECT `id` FROM `nested_struct4` WHERE (UPPER(name) LIKE '%OK%' OR UPPER(name) LIKE '%AT%') AND (LENGTH(occupation) >= 3)) AND `value` = 2",
+			expectedQuery: "SELECT * FROM `complex_struct1` WHERE nested_ref IN (SELECT `id` FROM `nested_struct4` WHERE (UPPER(name) LIKE '%OK%' OR UPPER(name) LIKE '%AT%') AND (LENGTH(occupation) >= 3)) AND `complex_struct1`.`value` = 2",
 		},
 	}
 
