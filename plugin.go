@@ -47,7 +47,10 @@ func createDeepFilterRecursively(exprs []clause.Expression, db *gorm.DB) {
 				concreteType := ensureNotASlice(reflect.TypeOf(db.Statement.Model))
 				inputObject := ensureConcrete(reflect.New(concreteType)).Interface()
 
-				applied, err := AddDeepFilters(db.Session(&gorm.Session{NewDB: true}), inputObject, map[string]any{cond.Column.(clause.Column).Name: value})
+				column := cond.Column.(clause.Column)
+				columnName := column.Name
+
+				applied, err := AddDeepFilters(db.Session(&gorm.Session{NewDB: true}), inputObject, map[string]any{columnName: value})
 
 				if err != nil {
 					_ = db.AddError(err)
